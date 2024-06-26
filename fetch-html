@@ -1,0 +1,83 @@
+#!/bin/bash
+
+APP_NAME="fetch-html"
+
+WEBDRIVER_URI="http://localhost:4444"
+
+MODE_HELP=1
+MODE_NORMAL=2
+
+open_session() {
+	res=$(curl -sS -X POST -H "Content-Type: application/json" -d "{}" "${WEBDRIVER_URI}/session")
+	if [ $? -ne 0 ]; then
+		echo "$res" | jq 1>&2
+		return 1
+	fi
+
+	echo "$res" | jq -r .value.sessionId
+
+	return 0
+}
+
+close_session() {
+	local session_id=$1
+
+	res=$(curl -sS -X DELETE "${WEBDRIVER_URI}/session/${session_id}" > /dev/null)
+	if [ $? -ne 0 ]; then
+		echo "$res" | jq 1>&2
+		return 1
+	fi
+
+	return 0
+}
+
+usage() {
+	cat << EOF
+Usage: $APP_NAME [OPTIONS] <URL>
+
+    Retrieve HTML from the specified url after executing javascript.
+
+    -h, --help    show this message
+
+EOF
+}
+
+mode=$MODE_NORMAL
+URL=""
+while [ $# -gt 0 ]; do
+	case "$1" in 
+	"-h" | "--help")
+		mode=$MODE_HELP
+		;;
+	*)
+		URL="$1"
+		;;
+	esac
+
+	shift
+done
+
+if [ $mode -eq $MODE_HELP ]; then
+	usage
+	exit 0
+fi
+
+if [ "x$URL" = "x" ]; then
+	echo -e "Error: url is not specifed\n" 1>&2
+	usage 1>&2
+	exit 1
+fi
+
+session_id=$(open_session)
+[ $? -ne 0 ] && (echo "Error: failed to open session" 1>&2; exit 1)
+
+curl -sS -X POST -H "Content-Type: application/json" -d "{\"url\": \"$URL\"}" "${WEBDRIVER_URI}/session/${session_id}/url" > /dev/null
+[ $? -ne 0 ] && (close_session; echo "Error: failed to access to $url" 1>&2; exit 1)
+
+curl -sS -X GET "${WEBDRIVER_URI}/session/${session_id}/source" | jq -r .value
+[ $? -ne 0 ] && (close_session; echo "Error: failed to get html source" 1>&2; exit 1)
+
+close_session $session_id
+[ $? -ne 0 ] && (echo "Error: failed to close session (session remains)" 1>&2; exit 1)
+
+exit 0

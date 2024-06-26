@@ -1,0 +1,6 @@
+#!/bin/bash
+
+FIREFOX=$(which firefox)
+
+$FIREFOX --headless "$@"
+
