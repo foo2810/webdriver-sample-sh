@@ -42,6 +42,16 @@ Usage: $APP_NAME [OPTIONS] <URL>
 EOF
 }
 
+cleanup_in_error() {
+	if [ -n $session_id ]; then
+		close_session $session_id
+	fi
+
+	exit 1
+}
+
+
+# Parse command line arguments
 mode=$MODE_NORMAL
 URL=""
 while [ $# -gt 0 ]; do
@@ -68,9 +78,17 @@ if [ "x$URL" = "x" ]; then
 	exit 1
 fi
 
+
+# Set error handle
+trap "cleanup_in_error" SIGHUP SIGINT SIGQUIT SIGTERM
+
+
+# Open session
 session_id=$(open_session)
 [ $? -ne 0 ] && (echo "Error: failed to open session" 1>&2; exit 1)
 
+
+# Access to specified url
 curl -sS -X POST -H "Content-Type: application/json" -d "{\"url\": \"$URL\"}" "${WEBDRIVER_URI}/session/${session_id}/url" > /dev/null
 [ $? -ne 0 ] && (close_session; echo "Error: failed to access to $url" 1>&2; exit 1)
 
@@ -94,10 +112,19 @@ if [ $cnt -eq $max_trials ]; then
 fi
 
 
+# Get HTML source
 curl -sS -X GET "${WEBDRIVER_URI}/session/${session_id}/source" | jq -r .value
 [ $? -ne 0 ] && (close_session; echo "Error: failed to get html source" 1>&2; exit 1)
 
+
+# Close session
 close_session $session_id
 [ $? -ne 0 ] && (echo "Error: failed to close session (session remains)" 1>&2; exit 1)
 
+
+# Unset error handle
+trap - SIGHUP SIGINT SIGQUIT SIGTERM
+
+
+# Exit successfully
 exit 0
