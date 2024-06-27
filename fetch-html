@@ -74,6 +74,26 @@ session_id=$(open_session)
 curl -sS -X POST -H "Content-Type: application/json" -d "{\"url\": \"$URL\"}" "${WEBDRIVER_URI}/session/${session_id}/url" > /dev/null
 [ $? -ne 0 ] && (close_session; echo "Error: failed to access to $url" 1>&2; exit 1)
 
+
+# Wait for page loading
+cnt=0
+max_trials=10
+while [ $cnt -lt $max_trials ]; do
+	res=$(curl -sS -X POST -H "Content-Type: application/json" -d "{\"script\": \"return document.readyState;\", \"args\": []}" "${WEBDRIVER_URI}/session/${session_id}/execute/sync")
+	[ $? -ne 0 ] && (close_session; echo "Error: failed to execute javascript" 1>&2; exit 1)
+
+	ready_state=$(echo "$res" | jq -r .value)
+	if [ $ready_state = "complete" ]; then
+		break
+	fi
+	cnt=$((cnt + 1))
+done
+if [ $cnt -eq $max_trials ]; then
+	echo "Error: timeout for waiting to load page" 1>&2
+	exit 1
+fi
+
+
 curl -sS -X GET "${WEBDRIVER_URI}/session/${session_id}/source" | jq -r .value
 [ $? -ne 0 ] && (close_session; echo "Error: failed to get html source" 1>&2; exit 1)
 
